@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Monthly File Archiver</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Always white. Layout: sticky top bar + stepper, wizard card on the left, live "archive so far" ledger on the right; stacks on phones */
+:root{
+  --bg:#f3f6f5; --surface:#ffffff; --sunk:#eaf0ee; --ink:#13211e; --muted:#5b6c67; --line:#d8e1de;
+  --accent:#0e6a5c; --accent-ink:#ffffff; --accent-soft:#dff0ec;
+  --warn:#94570a; --warn-soft:#fff1da; --bad:#b0261d; --bad-soft:#fde7e4; --good:#1d7539; --good-soft:#e2f3e7;
+  --c-special:#c0392b; --c-offer:#b7791f; --c-transfer:#2b6cb0;
+  --f-ui:"Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --r:10px;
+}
+:root{color-scheme:light}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+.top-in{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .mark{width:30px;height:30px;border-radius:7px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:700;font-size:13px;letter-spacing:.02em}
+.brand h1{font-size:17px;margin:0;font-weight:600}
+.brand small{display:block;color:var(--muted);font-size:12px;line-height:1.2}
+.steps{display:flex;gap:4px;flex-wrap:wrap;list-style:none;margin:0;padding:0}
+.steps li{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);padding:4px 10px 4px 4px;border-radius:999px}
+.steps li b{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;border:1px solid var(--line);background:var(--surface)}
+.steps li.on{color:var(--ink);background:var(--accent-soft)}
+.steps li.on b{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.steps li.done b{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px;
+  display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}}
+main{min-width:0;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:22px;min-width:0}
+.eyebrow{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px;font-weight:600}
+h2{font-size:22px;margin:0 0 6px;font-weight:600;text-wrap:balance;line-height:1.25}
+h3{font-size:15px;margin:0 0 10px;font-weight:600}
+.lead{color:var(--muted);margin:0 0 18px;max-width:65ch}
+.sec{border-top:1px solid var(--line);padding-top:18px;margin-top:18px}
+.sec:first-of-type{border-top:0;margin-top:0;padding-top:0}
+
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 16px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btn.ghost:hover{color:var(--ink);border-color:var(--line)}
+.btn.danger{color:var(--bad)}
+.btn[disabled]{opacity:.45;cursor:not-allowed;filter:none}
+.btn.small{padding:5px 10px;font-size:13px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin-top:22px}
+.actions .right{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto}
+
+.grid-months{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.pick{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:12px;text-align:left;cursor:pointer}
+.pick:hover{border-color:var(--accent)}
+.pick.on{border-color:var(--accent);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.pick small{display:block;color:var(--muted);font-size:12px}
+.pick[disabled]{opacity:.45;cursor:not-allowed}
+
+.choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.choice .pick{padding:16px}
+.choice .pick strong{display:block;font-size:16px}
+
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;max-width:460px}
+.cal .dow{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;padding-bottom:2px}
+.cal button{aspect-ratio:1/1;max-width:100%;border:1px solid var(--line);background:var(--surface);border-radius:8px;cursor:pointer;position:relative;font-variant-numeric:tabular-nums;font-weight:500}
+.cal button:hover{border-color:var(--accent)}
+.cal button.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.cal button.has::after{content:"";position:absolute;left:50%;bottom:5px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--accent)}
+.cal button.on.has::after{background:var(--accent-ink)}
+.cal button.today{box-shadow:inset 0 0 0 1px var(--muted)}
+
+.drop{border:1.5px dashed var(--line);border-radius:var(--r);padding:26px;text-align:center;background:var(--sunk);cursor:pointer;display:block}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop strong{display:block;font-size:15px}
+.drop span{color:var(--muted);font-size:13px}
+.drop input{display:none}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;cursor:pointer;font-size:13.5px;font-weight:500}
+.chip:hover{border-color:var(--accent)}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.cats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
+.cat{border:1px solid var(--line);border-left:4px solid var(--cc);border-radius:8px;padding:12px 14px;background:var(--surface);cursor:pointer;text-align:left}
+.cat:hover{border-color:var(--cc)}
+.cat.on{background:var(--accent-soft);border-color:var(--cc);box-shadow:inset 0 0 0 1px var(--cc)}
+.cat small{display:block;color:var(--muted);font-size:12px}
+.c-special{--cc:var(--c-special)} .c-offer{--cc:var(--c-offer)} .c-transfer{--cc:var(--c-transfer)}
+
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:12.5px;color:var(--muted);font-weight:500}
+.field select,.field input{border:1px solid var(--line);border-radius:7px;padding:8px 10px;background:var(--surface);min-width:0;width:100%}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.inline input[type=text]{border:1px solid var(--line);border-radius:7px;padding:8px 10px;background:var(--surface);min-width:0;flex:1 1 200px}
+
+.note{border-radius:8px;padding:10px 14px;font-size:13.5px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.note.warn{background:var(--warn-soft);color:var(--warn)}
+.note.bad{background:var(--bad-soft);color:var(--bad)}
+.note.good{background:var(--good-soft);color:var(--good)}
+.note.info{background:var(--accent-soft);color:var(--ink)}
+.note .grow{flex:1 1 220px;min-width:0}
+.notes{display:flex;flex-direction:column;gap:8px}
+.sec.notes:not(:has(*)){display:none}
+.req{border:1px solid var(--warn);background:var(--warn-soft);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.req strong{color:var(--warn)}
+
+.tbl-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px;max-height:380px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+thead th{position:sticky;top:0;background:var(--sunk);font-weight:600;font-size:12px;color:var(--muted);z-index:1}
+td.num,th.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+td.code{font-family:var(--f-mono)}
+tr.hl td{background:var(--accent-soft)}
+td.miss{color:var(--warn);font-style:italic}
+.raw td.colcode{background:var(--accent-soft);font-weight:600}
+.raw td.colhead{font-weight:600}
+details summary{cursor:pointer;color:var(--muted);font-size:13.5px;margin-bottom:8px}
+
+.pips{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.pips span{height:5px;flex:1 1 18px;max-width:60px;border-radius:3px;background:var(--line)}
+.pips span.done{background:var(--accent);opacity:.5}
+.pips span.cur{background:var(--accent)}
+.filehead{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;margin-bottom:4px}
+.filehead .fn{font-weight:600;font-size:18px;word-break:break-all}
+.tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:2px 9px;color:var(--muted);white-space:nowrap}
+
+.filelist{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.filelist li{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+.filelist .nm{font-weight:500;flex:1 1 200px;min-width:0;word-break:break-all}
+.filelist .meta{font-size:12.5px;color:var(--muted)}
+
+aside{display:flex;flex-direction:column;gap:12px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 80px)}
+@media (max-width:900px){aside{position:static}}
+.ledger h3{display:flex;justify-content:space-between;align-items:baseline}
+.ledger h3 span{font-weight:400;color:var(--muted);font-size:12.5px}
+.tot{display:flex;flex-direction:column;gap:8px}
+.tot div{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13.5px;padding-left:10px;border-left:3px solid var(--cc)}
+.tot b{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:500}
+.tot em{font-style:normal;color:var(--muted);font-size:12px;font-family:var(--f-mono)}
+.batches{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.batches li{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;border-bottom:1px dashed var(--line);padding-bottom:6px}
+.batches .d{font-weight:600;font-family:var(--f-mono)}
+.batches .m{color:var(--muted);font-size:12px}
+.empty{color:var(--muted);font-size:13px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;word-break:break-all}
+
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.sum{border:1px solid var(--line);border-top:4px solid var(--cc);border-radius:8px;padding:14px}
+.sum .n{font-size:26px;font-weight:600;font-family:var(--f-mono);font-variant-numeric:tabular-nums;line-height:1.1}
+.sum small{color:var(--muted);font-size:12.5px;display:block}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.err{color:var(--bad);font-size:13.5px;margin-top:10px}
+.muted{color:var(--muted)}
+</style>
+<style>body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><div class="mark">AR</div><div><h1>Monthly File Archiver</h1><small>Special / Urgent · Offer Dispatch · Transfer</small></div></div>
+    <ol class="steps" id="steps"></ol>
+  </div>
+</header>
+<div class="wrap">
+  <main id="main"></main>
+  <aside id="side"></aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script>
+/* ---------------- constants ---------------- */
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CATS=[
+  {key:'special',sheet:'Special-urgent',label:'Special / Urgent',rx:/special|urgent/i},
+  {key:'offer',sheet:'Offer Dispatch',label:'Offer Dispatch',rx:/offer|dispatch/i},
+  {key:'transfer',sheet:'Transfer',label:'Transfer',rx:/transfer|trnsfr|trans\b/i}];
+const SENDERS=['DR.AHMED','DR YASSER','DR ABDELRAHMAN','DR ABDULHAMEED','ENG DIAB','DR DIYA','SHAHEEN','AYA ABOOZAID'];
+const HEAD=['S.no','Pharmacy','Material Code','Qty','Wh','Who send the file ','Date'];
+const LOG_HEAD=['Date','File name','Sheet in file','Who send the file','Archive sheet','Rows added','Added on'];
+const STEPS=['Month','Previous archive','Day & files','Review sheets','Generate'];
+const RX={
+  wh:/(^|[^a-z])w\s*[\.\/]?\s*h([^a-z]|$)|ware\s*-?house|مستودع|مخزن/i,
+  qty:/q(uan)?t(it)?y|qnty|q'?ty|كمي|الكمية|req(uest(ed)?)?\s*q|alloc|order\s*q|^\s*qty/i,
+  pharm:/pharm|branch|store|site|outlet|location|shop|cost\s*cent|صيدل|فرع/i,
+  mat:/material|item|code|sku|article|مادة|صنف|كود/i,
+  notMatrix:/total|sum|barcode|price|cost|value|stock|soh|balance|desc|name|unit|uom|status|remark|note|date|no\.?$|^s\.?\s*no|serial|#/i
+};
+
+/* ---------------- helpers ---------------- */
+const $=s=>document.querySelector(s);
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const isoOf=(y,m0,d)=>`${y}-${pad(m0+1)}-${pad(d)}`;
+const fmtIso=iso=>{if(!iso)return '';const[y,m,d]=iso.split('-').map(Number);return `${pad(d)}-${MONTHS[m-1].slice(0,3)}-${y}`};
+const colL=c=>{let s='';c++;while(c>0){const m=(c-1)%26;s=String.fromCharCode(65+m)+s;c=Math.floor((c-1)/26)}return s};
+const blank=v=>v==null||(typeof v==='string'&&v.trim()==='');
+const clean=v=>typeof v==='string'?v.trim():v;
+const fmtN=n=>typeof n==='number'?n.toLocaleString('en-US',{maximumFractionDigits:3}):esc(n);
+const uid=()=>Math.random().toString(36).slice(2,10);
+const daysIn=(y,m0)=>new Date(y,m0+1,0).getDate();
+function codeOf(v){
+  if(v==null)return null;
+  if(typeof v==='number'){return Number.isInteger(v)&&v>=100000&&v<=599999?String(v):null}
+  if(v instanceof Date)return null;
+  const m=String(v).trim().match(/^([1-5]\d{5})(?:\.0+)?(?=$|[^\d.])/);
+  return m?m[1]:null;
+}
+function num(v){
+  if(blank(v))return null;
+  if(typeof v==='number')return v;
+  const s=String(v).trim().replace(/,/g,'');
+  return /^-?\d+(\.\d+)?$/.test(s)?parseFloat(s):String(v).trim();
+}
+function serialToIso(n){const d=new Date(Math.round((n-25569)*86400000));return isoOf(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())}
+function anyToIso(v){
+  if(blank(v))return null;
+  if(typeof v==='number')return v>20000&&v<80000?serialToIso(Math.floor(v)):null;
+  if(v instanceof Date)return isoOf(v.getFullYear(),v.getMonth(),v.getDate());
+  const s=String(v).trim();let m;
+  if((m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/)))return isoOf(+m[3],+m[2]-1,+m[1]);
+  if((m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)))return isoOf(+m[1],+m[2]-1,+m[3]);
+  if((m=s.match(/^(\d{1,2})[\s\-]([A-Za-z]{3,})[\s\-,]*(\d{4})$/))){const mi=MONTHS.findIndex(x=>x.slice(0,3).toLowerCase()===m[2].slice(0,3).toLowerCase());if(mi>=0)return isoOf(+m[3],mi,+m[1])}
+  return null;
+}
+function store(k,v){try{if(v===undefined)return JSON.parse(localStorage.getItem(k)||'null');localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
+function readFile(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>rej(fr.error);fr.readAsArrayBuffer(file)})}
+
+/* sheet -> array of arrays, merged cells expanded so a merged pharmacy cell applies to every row it covers */
+function sheetAoa(ws){
+  if(!ws||!ws['!ref'])return [];
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null,blankrows:true});
+  const rng=XLSX.utils.decode_range(ws['!ref']);
+  (ws['!merges']||[]).forEach(mg=>{
+    const r0=mg.s.r-rng.s.r,c0=mg.s.c-rng.s.c,v=(aoa[r0]||[])[c0];
+    if(v==null)return;
+    for(let r=r0;r<=mg.e.r-rng.s.r;r++){aoa[r]=aoa[r]||[];for(let c=c0;c<=mg.e.c-rng.s.c;c++){if(r===r0&&c===c0)continue;if(aoa[r][c]==null)aoa[r][c]=v}}
+  });
+  return aoa;
+}
+
+/* ---------------- detection on one uploaded sheet ---------------- */
+function analyse(aoa){
+  const ncol=aoa.reduce((m,r)=>Math.max(m,(r||[]).length),0);
+  const counts=new Array(ncol).fill(0);
+  aoa.forEach(r=>(r||[]).forEach((v,c)=>{if(codeOf(v))counts[c]++}));
+  const total=counts.reduce((a,b)=>a+b,0);
+  const info={ncol,counts,total,codeCol:-1,headerRow:-1,layout:'list',pharmCol:-1,qtyCol:-1,whCol:-1,matrixCols:[]};
+  if(!total)return info;
+  let best=counts.indexOf(Math.max(...counts));
+  info.codeCol=best;
+  findHeader(aoa,info);
+  // prefer a column labelled like "material code" when it is nearly as full as the best one
+  const lab=labels(aoa,info);
+  counts.forEach((n,c)=>{if(c!==best&&n>=counts[best]*0.8&&RX.mat.test(lab[c]||'')&&!RX.mat.test(lab[best]||'')){info.codeCol=c}});
+  if(info.codeCol!==best)findHeader(aoa,info);
+  guessColumns(aoa,info);
+  return info;
+}
+function findHeader(aoa,info){
+  info.headerRow=-1;
+  let first=aoa.findIndex(r=>r&&codeOf(r[info.codeCol]));
+  for(let h=first-1;h>=Math.max(0,first-15);h--){
+    const r=aoa[h]||[];
+    const txt=r.filter(v=>typeof v==='string'&&v.trim()&&!codeOf(v)).length;
+    if(txt>=2){info.headerRow=h;break}
+  }
+}
+function labels(aoa,info){
+  const h=info.headerRow>=0?(aoa[info.headerRow]||[]):[];
+  const out=[];for(let c=0;c<info.ncol;c++)out[c]=blank(h[c])?'':String(h[c]).trim();return out;
+}
+function codeRows(aoa,info){const rows=[];for(let r=info.headerRow+1;r<aoa.length;r++){if(aoa[r]&&codeOf(aoa[r][info.codeCol]))rows.push(r)}return rows}
+function numericShare(aoa,rows,c){
+  let n=0,nonblank=0,big=0;
+  rows.forEach(r=>{const v=num(aoa[r][c]);if(v==null)return;nonblank++;if(typeof v==='number'){n++;if(Math.abs(v)>=1e8)big++}});
+  return {share:rows.length?n/rows.length:0,nonblank,big};
+}
+function guessColumns(aoa,info){
+  const lab=labels(aoa,info),used=new Set([info.codeCol]);
+  const pick=rx=>{for(let c=0;c<info.ncol;c++){if(!used.has(c)&&lab[c]&&rx.test(lab[c])){used.add(c);return c}}return -1};
+  info.qtyCol=pick(RX.qty);
+  info.whCol=pick(RX.wh);
+  info.pharmCol=pick(RX.pharm);
+  const rows=codeRows(aoa,info);
+  if(info.qtyCol<0&&info.pharmCol<0){
+    // possible matrix: pharmacies across the columns
+    const mcols=[];
+    for(let c=0;c<info.ncol;c++){
+      if(used.has(c)||RX.notMatrix.test(lab[c]||''))continue;
+      const s=numericShare(aoa,rows,c);
+      if(s.nonblank&&s.big<s.nonblank*0.5&&s.share>0)mcols.push(c);
+    }
+    if(mcols.length>=2&&mcols.every(c=>lab[c])){info.layout='matrix';info.matrixCols=mcols;return}
+  }
+  if(info.qtyCol<0){
+    const order=[];for(let c=info.codeCol+1;c<info.ncol;c++)order.push(c);for(let c=0;c<info.codeCol;c++)order.push(c);
+    for(const c of order){if(used.has(c)||RX.notMatrix.test(lab[c]||''))continue;const s=numericShare(aoa,rows,c);if(s.share>=0.5&&s.big===0){info.qtyCol=c;used.add(c);break}}
+  }
+  // default matrix columns, in case the user switches layout
+  for(let c=0;c<info.ncol;c++){if(c!==info.codeCol&&c!==info.whCol&&!RX.notMatrix.test(lab[c]||'')&&numericShare(aoa,rows,c).share>0)info.matrixCols.push(c)}
+}
+
+/* rows out of one item, using its current mapping */
+function extract(it){
+  const out=[];let missPh=0,missWh=0,badQty=0,blankQty=0;
+  if(it.codeCol<0)return {rows:out,missPh,missWh,badQty,blankQty};
+  const lab=labels(it.aoa,it);
+  for(let r=it.headerRow+1;r<it.aoa.length;r++){
+    const row=it.aoa[r];if(!row)continue;
+    const code=codeOf(row[it.codeCol]);if(!code)continue;
+    let wh=it.whCol>=0?clean(row[it.whCol]):null;
+    if(it.layout==='matrix'){
+      for(const c of it.matrixCols){
+        const q=num(row[c]);if(q==null||q===0)continue;
+        if(typeof q!=='number')badQty++;
+        out.push({src:r+1,code,pharm:lab[c]||('Column '+colL(c)),qty:q,wh:blank(wh)?null:wh});
+      }
+    }else{
+      const ph=it.pharmCol>=0?clean(row[it.pharmCol]):null;
+      const q=it.qtyCol>=0?num(row[it.qtyCol]):null;
+      if(q==null)blankQty++;else if(typeof q!=='number')badQty++;
+      out.push({src:r+1,code,pharm:blank(ph)?null:ph,qty:q,wh:blank(wh)?null:wh});
+    }
+  }
+  out.forEach(o=>{
+    if(o.pharm==null){missPh++;if(it.fillPharm.trim())o.pharm=it.fillPharm.trim();o.phFilled=true}
+    if(o.wh==null){missWh++;if(it.fillWh.trim())o.wh=it.fillWh.trim();o.whFilled=true}
+  });
+  return {rows:out,missPh,missWh,badQty,blankQty};
+}
+function otherCodeCols(it){
+  const res=[];
+  for(let c=0;c<it.ncol;c++){
+    if(c===it.codeCol)continue;
+    let n=0;for(let r=it.headerRow+1;r<it.aoa.length;r++){if(it.aoa[r]&&codeOf(it.aoa[r][c]))n++}
+    if(n)res.push({c,n});
+  }
+  return res;
+}
+
+/* ---------------- previous archive ---------------- */
+function catOfName(name){return CATS.find(c=>c.rx.test(name))}
+function parseArchive(wb,fileName){
+  const res={fileName,rows:{special:[],offer:[],transfer:[]},log:[],ignored:[],dates:new Set()};
+  wb.SheetNames.forEach(name=>{
+    const aoa=sheetAoa(wb.Sheets[name]);
+    if(/log/i.test(name)){
+      const h=aoa.findIndex(r=>r&&r.some(v=>typeof v==='string'&&/file/i.test(v)));
+      for(let r=h+1;r<aoa.length;r++){const row=aoa[r]||[];if(row.every(blank))continue;
+        res.log.push({date:anyToIso(row[0])||clean(row[0]),file:clean(row[1]),sheet:clean(row[2]),sender:clean(row[3]),cat:clean(row[4]),rows:row[5],added:clean(row[6])})}
+      return;
+    }
+    const cat=catOfName(name);
+    if(!cat){if(aoa.some(r=>r&&r.some(v=>!blank(v))))res.ignored.push(name);return}
+    let h=aoa.findIndex(r=>r&&r.some(v=>typeof v==='string'&&/material/i.test(v)));
+    if(h<0)h=0;
+    const hr=(aoa[h]||[]).map(v=>blank(v)?'':String(v));
+    const f=rx=>hr.findIndex(x=>rx.test(x));
+    const C={ph:f(/pharm/i),code:f(/material|code/i),qty:f(/qty|quant/i),wh:f(/^\s*w\.?\s*\/?h|ware/i),sender:f(/who|send/i),date:f(/date/i)};
+    for(let r=h+1;r<aoa.length;r++){
+      const row=aoa[r]||[];if(row.every(blank))continue;
+      const g=k=>C[k]>=0?clean(row[C[k]]):null;
+      const dv=g('date');const iso=anyToIso(dv);
+      if(iso)res.dates.add(iso.slice(0,7));
+      const code=g('code');
+      res.rows[cat.key].push({pharm:g('ph'),code:code==null?null:(typeof code==='number'?String(code):code),qty:num(g('qty')),wh:g('wh'),sender:g('sender'),date:iso,dateRaw:iso?null:dv,src:'prev'});
+    }
+  });
+  return res;
+}
+
+/* ---------------- state ---------------- */
+const now=new Date();
+const S={step:'month',year:now.getFullYear(),month:now.getMonth(),prevChoice:null,prev:null,prevErr:'',prevBusy:false,
+  batches:[],cur:null,reviewIdx:0,skipDup:false,fileName:'',busy:false,err:'',confirmRemove:null,genMsg:null};
+let customSenders=store('archiver.customSenders')||[];
+
+function newBatch(){return {id:uid(),day:null,files:[],items:[],done:false}}
+function itemsToReview(b){return b.items}
+function batchRows(b){
+  const out=[];
+  b.items.forEach(it=>{if(it.skipped||!it.confirmed)return;
+    const sender=finalSender(it),cat=it.category;
+    extract(it).rows.forEach(r=>out.push({pharm:r.pharm,code:r.code,qty:r.qty,wh:r.wh,sender,date:isoOf(S.year,S.month,b.day),cat,src:'new',file:it.fileName}))});
+  return out;
+}
+function finalSender(it){return it.sender==='__other'?it.senderOther.trim().toUpperCase():it.sender}
+function allNew(){const out=[];S.batches.forEach(b=>batchRows(b).forEach(r=>out.push(r)));return out}
+const keyOf=(cat,r)=>[cat,r.date||r.dateRaw,r.sender,r.pharm,r.code,r.qty,r.wh].map(v=>String(v==null?'':v).trim().toLowerCase()).join('|');
+function dupInfo(){
+  const prevKeys=new Set();
+  if(S.prev)CATS.forEach(c=>S.prev.rows[c.key].forEach(r=>prevKeys.add(keyOf(c.key,r))));
+  let n=0;allNew().forEach(r=>{if(prevKeys.has(keyOf(r.cat,r)))n++});
+  return {prevKeys,n};
+}
+function totals(){
+  const t={};CATS.forEach(c=>t[c.key]={prev:S.prev?S.prev.rows[c.key].length:0,add:0});
+  allNew().forEach(r=>t[r.cat].add++);
+  return t;
+}
+const monthLabel=()=>`${MONTHS[S.month]} ${S.year}`;
+
+/* ---------------- render ---------------- */
+function stepIndex(){return {month:0,prev:1,day:2,review:3,more:3,done:4}[S.step]}
+function render(){
+  const si=stepIndex();
+  $('#steps').innerHTML=STEPS.map((s,i)=>`<li class="${i===si?'on':i<si?'done':''}"><b>${i<si?'✓':i+1}</b>${s}</li>`).join('');
+  $('#main').innerHTML=SCREENS[S.step]();
+  renderSide();
+}
+function renderSide(){
+  const t=totals();
+  const b=S.batches.filter(x=>x.done);
+  $('#side').innerHTML=`
+  <section class="card ledger">
+    <h3>Archive so far <span>${esc(monthLabel())}</span></h3>
+    <div class="tot">${CATS.map(c=>`<div class="c-${c.key}"><span>${c.label}</span><span><b>${(t[c.key].prev+t[c.key].add).toLocaleString()}</b> ${t[c.key].add?`<em>+${t[c.key].add.toLocaleString()} new</em>`:''}</span></div>`).join('')}</div>
+  </section>
+  <section class="card ledger">
+    <h3>Previous archive</h3>
+    ${S.prev?`<dl class="kv"><dt>File</dt><dd>${esc(S.prev.fileName)}</dd><dt>Rows</dt><dd class="mono">${CATS.reduce((a,c)=>a+S.prev.rows[c.key].length,0).toLocaleString()}</dd></dl>`:`<p class="empty">${S.prevChoice==='no'?'None. A new archive will be started.':'Not chosen yet.'}</p>`}
+  </section>
+  <section class="card ledger">
+    <h3>Dates added <span>${b.length}</span></h3>
+    ${b.length?`<ul class="batches">${b.map(x=>{const rows=batchRows(x).length,sh=x.items.filter(i=>i.confirmed&&!i.skipped).length;
+      return `<li><span><span class="d">${esc(fmtIso(isoOf(S.year,S.month,x.day)))}</span><br><span class="m">${sh} sheet${sh===1?'':'s'} · ${rows.toLocaleString()} rows</span></span>
+      ${S.confirmRemove===x.id?`<button class="btn small danger" data-act="removeBatch" data-arg="${x.id}">Confirm remove</button>`:`<button class="btn small ghost" data-act="askRemove" data-arg="${x.id}" aria-label="Remove this date">Remove</button>`}</li>`}).join('')}</ul>`
+    :'<p class="empty">No dates added yet. Each day you add appears here with its row count.</p>'}
+  </section>`;
+}
+
+const SCREENS={
+month(){
+  const locked=S.batches.some(b=>b.done);
+  const years=[];for(let y=now.getFullYear()-2;y<=now.getFullYear()+1;y++)years.push(y);
+  return `<section class="card">
+    <p class="eyebrow">Step 1</p><h2>Which month are you archiving?</h2>
+    <p class="lead">Every file you add will be dated inside this month. The current month is selected for you.</p>
+    <div class="fields" style="max-width:220px;margin-bottom:14px"><div class="field"><label for="year">Year</label>
+      <select id="year" data-change="year" ${locked?'disabled':''}>${years.map(y=>`<option ${y===S.year?'selected':''}>${y}</option>`).join('')}</select></div></div>
+    <div class="grid-months">${MONTHS.map((m,i)=>`<button class="pick ${i===S.month?'on':''}" data-act="pickMonth" data-arg="${i}" ${locked?'disabled':''}><strong>${m}</strong><small>${daysIn(S.year,i)} days</small></button>`).join('')}</div>
+    ${locked?'<p class="err" style="color:var(--muted)">Month is locked because dates are already added. Remove them to change month.</p>':''}
+    <div class="actions"><span></span><div class="right"><button class="btn primary" data-act="go" data-arg="prev">Continue with ${esc(monthLabel())}</button></div></div>
+  </section>`;
+},
+prev(){
+  const p=S.prev;
+  let detail='';
+  if(S.prevChoice==='yes'){
+    detail=`<div class="sec">
+      <label class="drop" id="prevDrop"><input type="file" id="prevFile" accept=".xlsx,.xls,.xlsm,.csv">
+        <strong>${p?'Replace the previous archive file':'Upload the previous archive file'}</strong><span>The archive this app made before, or one in the same layout as your sample</span></label>
+      ${S.prevBusy?'<p class="muted"><span class="spin"></span> Reading archive…</p>':''}
+      ${S.prevErr?`<p class="err">${esc(S.prevErr)}</p>`:''}
+      ${p?prevSummary(p):''}
+    </div>`;
+  }
+  const can=S.prevChoice==='no'||(S.prevChoice==='yes'&&p);
+  return `<section class="card">
+    <p class="eyebrow">Step 2</p><h2>Is there a previous archive file for ${esc(monthLabel())}?</h2>
+    <p class="lead">If yes, new files are added to the end of it and nothing in it is removed. If no, a fresh archive is started.</p>
+    <div class="choice">
+      <button class="pick ${S.prevChoice==='yes'?'on':''}" data-act="prevChoice" data-arg="yes"><strong>Yes</strong><small>Continue an existing archive</small></button>
+      <button class="pick ${S.prevChoice==='no'?'on':''}" data-act="prevChoice" data-arg="no"><strong>No</strong><small>Start a new archive for this month</small></button>
+    </div>
+    ${detail}
+    <div class="actions"><button class="btn ghost" data-act="go" data-arg="month">Back</button><div class="right"><button class="btn primary" data-act="startDay" ${can?'':'disabled'}>Continue</button></div></div>
+  </section>`;
+},
+day(){
+  const b=S.cur;const y=S.year,m=S.month,dim=daysIn(y,m),startDow=new Date(y,m,1).getDay();
+  const has=new Set(S.batches.filter(x=>x.done).map(x=>x.day));
+  const todayD=(now.getFullYear()===y&&now.getMonth()===m)?now.getDate():-1;
+  let cal=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="dow">${d}</div>`).join('');
+  for(let i=0;i<startDow;i++)cal+='<div></div>';
+  for(let d=1;d<=dim;d++)cal+=`<button class="${b.day===d?'on':''} ${has.has(d)?'has':''} ${d===todayD?'today':''}" data-act="pickDay" data-arg="${d}" aria-label="${d} ${MONTHS[m]}">${d}</button>`;
+  const sheets=b.items.length;
+  return `<section class="card">
+    <p class="eyebrow">Step 3 · Date ${S.batches.filter(x=>x.done).length+1}</p><h2>Which day are these files from?</h2>
+    <p class="lead">Every row from the files you upload next is marked with this date. Days with a dot already have files.</p>
+    <div class="cal">${cal}</div>
+    ${b.day?`<div class="sec">
+      <h3>Upload the files for ${esc(fmtIso(isoOf(y,m,b.day)))}</h3>
+      <label class="drop" id="dayDrop"><input type="file" id="dayFiles" multiple accept=".xlsx,.xls,.xlsm,.csv">
+        <strong>Choose files or drop them here</strong><span>One or more Excel or CSV files. Every sheet inside each file is checked for material codes.</span></label>
+      ${S.busy?'<p class="muted"><span class="spin"></span> Reading files…</p>':''}
+      ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+      ${b.files.length?`<ul class="filelist">${b.files.map(f=>`<li><span class="nm">${esc(f.name)}</span><span class="meta">${f.sheets.map(s=>`${esc(s.name)}: ${s.codes?`<b>${s.codes}</b> codes`:'no codes'}`).join(' · ')}</span><button class="btn small ghost" data-act="removeFile" data-arg="${f.id}">Remove</button></li>`).join('')}</ul>`:''}
+    </div>`:''}
+    <div class="actions"><button class="btn ghost" data-act="dayBack">Back</button><div class="right">
+      <button class="btn primary" data-act="startReview" ${b.day&&sheets?'':'disabled'}>Review ${sheets||''} sheet${sheets===1?'':'s'}</button></div></div>
+  </section>`;
+},
+review(){
+  const b=S.cur,it=b.items[S.reviewIdx],n=b.items.length;
+  const ex=extract(it);const lab=labels(it.aoa,it);
+  const colOpts=(sel,allowNone)=>`${allowNone?`<option value="-1" ${sel<0?'selected':''}>— Not in this sheet —</option>`:''}${Array.from({length:it.ncol},(_,c)=>`<option value="${c}" ${c===sel?'selected':''}>${colL(c)}${lab[c]?' · '+esc(lab[c].slice(0,40)):''}</option>`).join('')}`;
+  const others=otherCodeCols(it);
+  const whs=knownValues('wh'),phs=knownValues('pharm');
+  const senders=[...SENDERS,...customSenders.filter(s=>!SENDERS.includes(s))];
+  const preview=ex.rows.slice(0,200);
+  const raw=it.aoa.slice(0,15);
+  return `<section class="card">
+    <div class="pips">${b.items.map((x,i)=>`<span class="${i===S.reviewIdx?'cur':(x.confirmed||x.skipped)?'done':''}"></span>`).join('')}</div>
+    <p class="eyebrow">Step 4 · Sheet ${S.reviewIdx+1} of ${n} · ${esc(fmtIso(isoOf(S.year,S.month,b.day)))}</p>
+    <div class="filehead"><span class="fn">${esc(it.fileName)}</span><span class="tag">Sheet: ${esc(it.sheetName)}</span><span class="tag">${ex.rows.length.toLocaleString()} rows found</span></div>
+
+    ${it.codeCol<0?`<div class="note bad" style="margin-top:12px"><span class="grow">No material codes (6 digits starting with 1–5) were found in this sheet. Skip it, or go back and upload the right file.</span></div>`:''}
+
+    <div class="sec" style="margin-top:18px">
+      <h3>Who sent this file?</h3>
+      <div class="chips">${senders.map(s=>`<button class="chip ${it.sender===s?'on':''}" data-act="sender" data-arg="${esc(s)}">${esc(s)}</button>`).join('')}
+        <button class="chip ${it.sender==='__other'?'on':''}" data-act="sender" data-arg="__other">Someone else…</button></div>
+      ${it.sender==='__other'?`<div class="inline" style="margin-top:10px"><input type="text" id="senderOther" data-input="senderOther" placeholder="Type the sender's name" value="${esc(it.senderOther)}"></div>`:''}
+    </div>
+
+    <div class="sec">
+      <h3>Which archive sheet does it go into?</h3>
+      <div class="cats">${CATS.map(c=>`<button class="cat c-${c.key} ${it.category===c.key?'on':''}" data-act="category" data-arg="${c.key}"><strong>${c.label}</strong><small>Sheet “${c.sheet}”</small></button>`).join('')}</div>
+    </div>
+
+    ${it.codeCol>=0?`<div class="sec">
+      <h3>Columns found</h3>
+      <div class="fields">
+        <div class="field"><label for="m-code">Material code</label><select id="m-code" data-change="codeCol">${colOpts(it.codeCol,false)}</select></div>
+        <div class="field"><label for="m-layout">Layout</label><select id="m-layout" data-change="layout">
+          <option value="list" ${it.layout==='list'?'selected':''}>One row per item</option>
+          <option value="matrix" ${it.layout==='matrix'?'selected':''}>Pharmacies across the columns</option></select></div>
+        ${it.layout==='list'?`<div class="field"><label for="m-ph">Pharmacy</label><select id="m-ph" data-change="pharmCol">${colOpts(it.pharmCol,true)}</select></div>
+        <div class="field"><label for="m-qty">Qty</label><select id="m-qty" data-change="qtyCol">${colOpts(it.qtyCol,true)}</select></div>`:''}
+        <div class="field"><label for="m-wh">Wh</label><select id="m-wh" data-change="whCol">${colOpts(it.whCol,true)}</select></div>
+      </div>
+      ${it.layout==='matrix'?`<div style="margin-top:12px"><p class="muted" style="margin:0 0 6px;font-size:13px">Pharmacy columns (the header is used as the pharmacy name, the cell as Qty; empty and zero cells are left out):</p>
+        <div class="chips">${Array.from({length:it.ncol},(_,c)=>c).filter(c=>c!==it.codeCol&&c!==it.whCol).map(c=>`<button class="chip ${it.matrixCols.includes(c)?'on':''}" data-act="mcol" data-arg="${c}">${colL(c)}${lab[c]?' · '+esc(lab[c].slice(0,24)):''}</button>`).join('')}</div></div>`:''}
+    </div>`:''}
+
+    ${(ex.missWh||ex.missPh)?`<div class="sec"><div class="req">
+      ${ex.missWh?`<strong>${ex.missWh===ex.rows.length?'This sheet has no WH.':`${ex.missWh.toLocaleString()} of ${ex.rows.length.toLocaleString()} rows have no WH.`} Which WH should they get?</strong>
+        <div class="inline"><input type="text" id="fillWh" data-input="fillWh" list="whList" placeholder="Type the WH" value="${esc(it.fillWh)}">${whs.map(w=>`<button class="chip ${it.fillWh===w?'on':''}" data-act="fillWh" data-arg="${esc(w)}">${esc(w)}</button>`).join('')}</div>
+        <datalist id="whList">${whs.map(w=>`<option value="${esc(w)}">`).join('')}</datalist>`:''}
+      ${ex.missPh?`<strong>${ex.missPh===ex.rows.length?'This sheet has no pharmacy column.':`${ex.missPh.toLocaleString()} rows have no pharmacy.`} Which pharmacy should they get?</strong>
+        <div class="inline"><input type="text" id="fillPharm" data-input="fillPharm" list="phList" placeholder="Type the pharmacy" value="${esc(it.fillPharm)}"></div>
+        <datalist id="phList">${phs.slice(0,200).map(w=>`<option value="${esc(w)}">`).join('')}</datalist>`:''}
+    </div></div>`:''}
+
+    <div class="sec notes">
+      ${others.map(o=>`<div class="note warn"><span class="grow">Column ${colL(o.c)}${lab[o.c]?` (${esc(lab[o.c])})`:''} also has ${o.n} material code${o.n===1?'':'s'} that are not being read.</span><button class="btn small" data-act="useCodeCol" data-arg="${o.c}">Read column ${colL(o.c)} instead</button></div>`).join('')}
+      ${ex.blankQty?`<div class="note warn"><span class="grow">${ex.blankQty} row${ex.blankQty===1?' has':'s have'} an empty Qty. They are kept with Qty left blank.</span></div>`:''}
+      ${ex.badQty?`<div class="note warn"><span class="grow">${ex.badQty} Qty value${ex.badQty===1?' is':'s are'} not a number. They are kept exactly as written.</span></div>`:''}
+      ${dupFileWarn(it)}
+    </div>
+
+    ${ex.rows.length?`<div class="sec"><h3>Rows that will be archived <span class="muted" style="font-weight:400">(${ex.rows.length.toLocaleString()}${ex.rows.length>200?', first 200 shown':''})</span></h3>
+      <div class="tbl-wrap"><table><thead><tr><th class="num">Row</th><th>Pharmacy</th><th>Material Code</th><th class="num">Qty</th><th>Wh</th></tr></thead><tbody>
+      ${preview.map(r=>`<tr><td class="num muted">${r.src}</td><td class="${r.phFilled?'miss':''}">${esc(r.pharm??'missing')}</td><td class="code">${r.code}</td><td class="num">${r.qty==null?'':fmtN(r.qty)}</td><td class="${r.whFilled?'miss':''}">${esc(r.wh??'missing')}</td></tr>`).join('')}
+      </tbody></table></div></div>`:''}
+
+    <div class="sec"><details><summary>Original sheet, first 15 rows</summary>
+      <div class="tbl-wrap raw"><table><thead><tr><th class="num">#</th>${Array.from({length:it.ncol},(_,c)=>`<th>${colL(c)}</th>`).join('')}</tr></thead><tbody>
+      ${raw.map((r,ri)=>`<tr><td class="num muted">${ri+1}</td>${Array.from({length:it.ncol},(_,c)=>{const v=(r||[])[c];return `<td class="${ri===it.headerRow?'colhead':''} ${c===it.codeCol&&codeOf(v)?'colcode':''}">${esc(v instanceof Date?v.toISOString().slice(0,10):v)}</td>`}).join('')}</tr>`).join('')}
+      </tbody></table></div></details></div>
+
+    ${S.err?`<p class="err">${esc(S.err)}</p>`:''}
+    <div class="actions"><button class="btn ghost" data-act="revBack">Back</button><div class="right">
+      <button class="btn" data-act="skipItem">Skip this sheet</button>
+      <button class="btn primary" data-act="saveItem">${S.reviewIdx<n-1?'Save and next sheet':'Save this date'}</button></div></div>
+  </section>`;
+},
+more(){
+  const b=S.batches[S.batches.length-1];const rows=b?batchRows(b).length:0;
+  return `<section class="card">
+    <p class="eyebrow">Date added</p><h2>${esc(fmtIso(isoOf(S.year,S.month,b.day)))} is in: ${rows.toLocaleString()} rows</h2>
+    <p class="lead">Is there any other date with files for ${esc(monthLabel())}?</p>
+    <div class="choice">
+      <button class="pick" data-act="anotherDate"><strong>Yes, add another date</strong><small>Pick the day and upload its files</small></button>
+      <button class="pick" data-act="go" data-arg="done"><strong>No, I'm done</strong><small>Review totals and generate the archive</small></button>
+    </div>
+  </section>`;
+},
+done(){
+  const t=totals();const d=dupInfo();
+  const added=S.batches.filter(b=>b.done);
+  const def=`Archive_of_${MONTHS[S.month]}_${S.year}`;
+  const nNew=allNew().length;
+  return `<section class="card">
+    <p class="eyebrow">Step 5</p><h2>Generate the archive for ${esc(monthLabel())}</h2>
+    <p class="lead">${S.prev?'Your previous archive is kept as it was and the new rows are added to it, sorted by date with S.no numbered again.':'A new archive is created with the three sheets from your sample.'} A “File Log” sheet lists every file and who sent it.</p>
+    <div class="sumgrid">${CATS.map(c=>`<div class="sum c-${c.key}"><small>${c.label}</small><div class="n">${(t[c.key].prev+t[c.key].add).toLocaleString()}</div><small>${t[c.key].prev.toLocaleString()} previous · ${t[c.key].add.toLocaleString()} new</small></div>`).join('')}</div>
+
+    ${added.length?`<div class="sec"><h3>New files by date</h3><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>File · sheet</th><th>Sent by</th><th>Archive sheet</th><th class="num">Rows</th></tr></thead><tbody>
+      ${added.flatMap(b=>b.items.filter(i=>i.confirmed&&!i.skipped).map(i=>`<tr><td class="mono">${esc(fmtIso(isoOf(S.year,S.month,b.day)))}</td><td>${esc(i.fileName)} · ${esc(i.sheetName)}</td><td>${esc(finalSender(i))}</td><td>${CATS.find(c=>c.key===i.category).label}</td><td class="num">${extract(i).rows.length.toLocaleString()}</td></tr>`)).join('')}
+      </tbody></table></div></div>`:''}
+
+    <div class="sec notes">
+      ${!nNew?`<div class="note warn"><span class="grow">No new rows added yet. You can still generate ${S.prev?'a cleaned copy of the previous archive':'an empty archive'}, or add a date first.</span></div>`:''}
+      ${d.n?`<div class="note warn"><span class="grow">${d.n} new row${d.n===1?' is':'s are'} identical to rows already in the previous archive (same date, sender, pharmacy, code, qty and WH). This usually means a file was archived before.</span>
+        <label class="inline" style="font-size:13px"><input type="checkbox" id="skipDup" data-change="skipDup" ${S.skipDup?'checked':''}> Leave these out</label></div>`:''}
+      ${S.prev&&[...S.prev.dates].some(m=>m!==`${S.year}-${pad(S.month+1)}`)?`<div class="note warn"><span class="grow">The previous archive contains dates outside ${esc(monthLabel())}. They are kept as they are.</span></div>`:''}
+    </div>
+
+    <div class="sec"><div class="fields" style="max-width:460px"><div class="field"><label for="fname">File name</label><input id="fname" data-input="fileName" value="${esc(S.fileName||def)}"></div></div></div>
+    ${S.genMsg?`<div class="note ${S.genMsg.kind}" style="margin-top:14px"><span class="grow">${S.genMsg.html}</span></div>`:''}
+    <div class="actions"><button class="btn ghost" data-act="anotherDate">Add another date</button><div class="right">
+      <button class="btn primary" data-act="generate" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> Building…':'Generate archive (.xlsx)'}</button></div></div>
+  </section>`;
+}
+};
+function dupFileWarn(it){
+  const same=[];S.batches.forEach(b=>{if(!b.done||b===S.cur)return;b.items.forEach(x=>{if(x.fileName===it.fileName&&x.sheetName===it.sheetName&&x.confirmed&&!x.skipped)same.push(b.day)})});
+  return same.length?`<div class="note warn"><span class="grow">This file and sheet was already added for ${same.map(d=>fmtIso(isoOf(S.year,S.month,d))).join(', ')}.</span></div>`:'';
+}
+function knownValues(k){
+  const s=new Set();
+  if(S.prev)CATS.forEach(c=>S.prev.rows[c.key].forEach(r=>{if(!blank(r[k]))s.add(String(r[k]))}));
+  S.batches.forEach(b=>b.items.forEach(it=>{if(it.codeCol<0)return;
+    const col=k==='wh'?it.whCol:it.pharmCol;if(col<0)return;
+    for(let r=it.headerRow+1;r<it.aoa.length;r++){const v=(it.aoa[r]||[])[col];if(!blank(v)&&codeOf((it.aoa[r]||[])[it.codeCol]))s.add(String(v).trim())}}));
+  return [...s].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})).slice(0,k==='wh'?12:500);
+}
+function prevSummary(p){
+  const tot=CATS.reduce((a,c)=>a+p.rows[c.key].length,0);
+  return `<div style="margin-top:14px" class="notes">
+    <div class="note good"><span class="grow"><b>${esc(p.fileName)}</b> read: ${tot.toLocaleString()} rows${p.log.length?`, ${p.log.length} file log entries`:''}.</span></div>
+    <div class="sumgrid">${CATS.map(c=>`<div class="sum c-${c.key}"><small>${c.label}</small><div class="n">${p.rows[c.key].length.toLocaleString()}</div></div>`).join('')}</div>
+    ${p.ignored.length?`<div class="note warn"><span class="grow">Sheet${p.ignored.length>1?'s':''} ${p.ignored.map(esc).join(', ')} did not match Special-urgent, Offer Dispatch or Transfer and will not be carried over.</span></div>`:''}
+  </div>`;
+}
+
+/* ---------------- actions ---------------- */
+const ACT={
+  pickMonth(a){S.month=+a;render()},
+  go(a){S.step=a;S.err='';if(a==='done')S.genMsg=null;render();window.scrollTo(0,0)},
+  prevChoice(a){S.prevChoice=a;if(a==='no'){S.prev=null;S.prevErr=''}render()},
+  startDay(){S.cur=newBatch();S.step='day';S.err='';render();window.scrollTo(0,0)},
+  pickDay(a){S.cur.day=+a;render()},
+  dayBack(){if(S.batches.some(b=>b.done)){S.step='more'}else S.step='prev';render()},
+  removeFile(a){const b=S.cur;b.files=b.files.filter(f=>f.id!==a);b.items=b.items.filter(i=>i.fileId!==a);render()},
+  startReview(){S.reviewIdx=0;S.step='review';S.err='';render();window.scrollTo(0,0)},
+  sender(a){const it=cur();it.sender=a;S.err='';render();if(a==='__other')setTimeout(()=>$('#senderOther')?.focus(),0)},
+  category(a){cur().category=a;S.err='';render()},
+  fillWh(a){cur().fillWh=a;render()},
+  mcol(a){const it=cur(),c=+a;it.matrixCols=it.matrixCols.includes(c)?it.matrixCols.filter(x=>x!==c):[...it.matrixCols,c].sort((x,y)=>x-y);render()},
+  useCodeCol(a){const it=cur();it.codeCol=+a;findHeader(it.aoa,it);render()},
+  revBack(){if(S.reviewIdx>0){S.reviewIdx--}else S.step='day';S.err='';render();window.scrollTo(0,0)},
+  skipItem(){const it=cur();it.skipped=true;it.confirmed=false;nextItem()},
+  saveItem(){
+    const it=cur(),ex=extract(it);
+    const miss=[];
+    if(!it.sender)miss.push('who sent the file');
+    if(it.sender==='__other'&&!it.senderOther.trim())miss.push('the sender’s name');
+    if(!it.category)miss.push('the archive sheet');
+    if(!ex.rows.length)miss.push('at least one row with a material code (or skip this sheet)');
+    if(ex.missWh&&!it.fillWh.trim())miss.push('the WH for rows without one');
+    if(ex.missPh&&!it.fillPharm.trim())miss.push('the pharmacy for rows without one');
+    if(miss.length){S.err='Please choose '+miss.join(', ')+'.';render();return}
+    if(it.sender==='__other'){const nm=finalSender(it);if(!SENDERS.includes(nm)&&!customSenders.includes(nm)){customSenders=[...customSenders,nm].slice(-12);store('archiver.customSenders',customSenders)}}
+    it.confirmed=true;it.skipped=false;nextItem();
+  },
+  anotherDate(){S.cur=newBatch();S.step='day';S.err='';render();window.scrollTo(0,0)},
+  askRemove(a){S.confirmRemove=a;renderSide()},
+  removeBatch(a){S.batches=S.batches.filter(b=>b.id!==a);S.confirmRemove=null;if(S.step==='more'&&!S.batches.length){S.step='day';S.cur=newBatch()}render()},
+  generate(){generate()}
+};
+function cur(){return S.cur.items[S.reviewIdx]}
+function nextItem(){
+  S.err='';const b=S.cur;
+  if(S.reviewIdx<b.items.length-1){S.reviewIdx++;render();window.scrollTo(0,0);return}
+  if(!b.items.some(i=>i.confirmed)){S.err='Every sheet was skipped, so nothing was added for this date.';}
+  if(!b.done){b.done=true;S.batches.push(b)}
+  S.batches.sort((x,y)=>x.day-y.day);
+  S.step='more';render();window.scrollTo(0,0);
+}
+const CHANGE={
+  year(v){S.year=+v;render()},
+  codeCol(v){const it=cur();it.codeCol=+v;findHeader(it.aoa,it);render()},
+  layout(v){cur().layout=v;render()},
+  pharmCol(v){cur().pharmCol=+v;render()},
+  qtyCol(v){cur().qtyCol=+v;render()},
+  whCol(v){const it=cur();it.whCol=+v;it.matrixCols=it.matrixCols.filter(c=>c!==it.whCol);render()},
+  skipDup(v,el){S.skipDup=el.checked}
+};
+const INPUT={
+  senderOther(v){cur().senderOther=v},
+  fillWh(v){cur().fillWh=v},
+  fillPharm(v){cur().fillPharm=v},
+  fileName(v){S.fileName=v}
+};
+const RERENDER_ON_BLUR=new Set(['fillWh','fillPharm']);
+
+document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(!a||a.disabled)return;e.preventDefault();ACT[a.dataset.act]?.(a.dataset.arg,a)});
+document.addEventListener('change',e=>{const el=e.target;
+  if(el.dataset.change){CHANGE[el.dataset.change]?.(el.value,el);return}
+  if(el.dataset.input&&RERENDER_ON_BLUR.has(el.dataset.input)){render()}
+  if(el.id==='prevFile'&&el.files[0])loadPrev(el.files[0]);
+  if(el.id==='dayFiles'&&el.files.length)loadDayFiles([...el.files]);
+});
+document.addEventListener('input',e=>{const el=e.target;if(el.dataset.input)INPUT[el.dataset.input]?.(el.value,el)});
+document.addEventListener('dragover',e=>{const d=e.target.closest('.drop');if(d){e.preventDefault();d.classList.add('over')}});
+document.addEventListener('dragleave',e=>{const d=e.target.closest('.drop');if(d)d.classList.remove('over')});
+document.addEventListener('drop',e=>{const d=e.target.closest('.drop');if(!d)return;e.preventDefault();d.classList.remove('over');
+  const fs=[...e.dataTransfer.files];if(!fs.length)return;
+  if(d.id==='prevDrop')loadPrev(fs[0]);else if(d.id==='dayDrop')loadDayFiles(fs)});
+
+/* ---------------- file loading ---------------- */
+function libsReady(){if(!window.XLSX||!window.ExcelJS){return false}return true}
+async function loadPrev(file){
+  if(!libsReady()){S.prevErr='The Excel reader has not loaded. Check your connection and reload the page.';render();return}
+  S.prevBusy=true;S.prevErr='';render();
+  try{
+    const wb=XLSX.read(await readFile(file),{type:'array'});
+    const p=parseArchive(wb,file.name);
+    const tot=CATS.reduce((a,c)=>a+p.rows[c.key].length,0);
+    if(!tot&&!wb.SheetNames.some(n=>catOfName(n)))throw new Error('This file has no Special-urgent, Offer Dispatch or Transfer sheet. Upload an archive in the same layout as your sample.');
+    S.prev=p;
+  }catch(err){S.prevErr=err.message||'This file could not be read.';S.prev=null}
+  S.prevBusy=false;render();
+}
+async function loadDayFiles(files){
+  if(!libsReady()){S.err='The Excel reader has not loaded. Check your connection and reload the page.';render();return}
+  S.busy=true;S.err='';render();
+  const b=S.cur;const bad=[];
+  for(const file of files){
+    try{
+      const wb=XLSX.read(await readFile(file),{type:'array'});
+      const f={id:uid(),name:file.name,sheets:[]};
+      wb.SheetNames.forEach(sn=>{
+        const aoa=sheetAoa(wb.Sheets[sn]);
+        if(!aoa.some(r=>r&&r.some(v=>!blank(v))))return; // empty sheet
+        const info=analyse(aoa);
+        f.sheets.push({name:sn,codes:info.total});
+        const guess=CATS.find(c=>c.rx.test(file.name)||c.rx.test(sn));
+        b.items.push(Object.assign(info,{id:uid(),fileId:f.id,fileName:file.name,sheetName:sn,aoa,sender:'',senderOther:'',category:guess?guess.key:'',fillWh:'',fillPharm:'',confirmed:false,skipped:false}));
+      });
+      if(!f.sheets.length)bad.push(file.name+' (empty)');
+      b.files.push(f);
+    }catch(err){bad.push(file.name)}
+  }
+  // sheets without codes go to the end of the review queue
+  b.items.sort((x,y)=>(y.total>0)-(x.total>0));
+  S.busy=false;if(bad.length)S.err='Could not read: '+bad.join(', ');
+  render();
+}
+
+/* ---------------- build the workbook ---------------- */
+function collectRows(){
+  const d=dupInfo();const out={special:[],offer:[],transfer:[]};
+  if(S.prev)CATS.forEach(c=>S.prev.rows[c.key].forEach(r=>out[c.key].push(r)));
+  allNew().forEach(r=>{if(S.skipDup&&d.prevKeys.has(keyOf(r.cat,r)))return;out[r.cat].push(r)});
+  CATS.forEach(c=>out[c.key].sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')));
+  return out;
+}
+function utcDate(iso){const[y,m,d]=iso.split('-').map(Number);return new Date(Date.UTC(y,m-1,d))}
+async function buildWorkbook(){
+  const rows=collectRows();
+  const wb=new ExcelJS.Workbook();
+  wb.creator='Monthly File Archiver';wb.created=new Date();
+  const C={head:'FF0E5A4F',headTxt:'FFFFFFFF',band:'FFEFF6F4',line:'FFD3DEDA'};
+  const border={top:{style:'thin',color:{argb:C.line}},left:{style:'thin',color:{argb:C.line}},bottom:{style:'thin',color:{argb:C.line}},right:{style:'thin',color:{argb:C.line}}};
+  const styleHead=(ws,n)=>{const h=ws.getRow(1);h.height=24;for(let c=1;c<=n;c++){const cell=h.getCell(c);cell.font={bold:true,color:{argb:C.headTxt},name:'Calibri',size:11};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:C.head}};cell.alignment={vertical:'middle',horizontal:'center',wrapText:true};cell.border=border}};
+  CATS.forEach(cat=>{
+    const ws=wb.addWorksheet(cat.sheet,{views:[{state:'frozen',ySplit:1}],properties:{tabColor:{argb:{special:'FFC0392B',offer:'FFB7791F',transfer:'FF2B6CB0'}[cat.key]}},pageSetup:{orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'1:1'}});
+    ws.columns=[{width:7},{width:20},{width:16},{width:11},{width:11},{width:22},{width:14}];
+    ws.addRow(HEAD);styleHead(ws,7);
+    let band=false,lastDate=null;
+    rows[cat.key].forEach((r,i)=>{
+      const code=r.code!=null&&/^\d+$/.test(String(r.code))?Number(r.code):r.code;
+      const pharm=r.pharm!=null&&typeof r.pharm==='string'&&/^\d+$/.test(r.pharm)&&r.pharm.length<12?Number(r.pharm):r.pharm;
+      const dateVal=r.date?utcDate(r.date):(r.dateRaw??null);
+      const row=ws.addRow([i+1,pharm??null,code??null,r.qty??null,r.wh??null,r.sender??null,dateVal]);
+      const dk=r.date||r.dateRaw||'';if(dk!==lastDate){band=!band;lastDate=dk}
+      row.eachCell({includeEmpty:true},(cell,c)=>{
+        cell.border=border;cell.font={name:'Calibri',size:11};
+        cell.alignment={vertical:'middle',horizontal:c===2||c===6?'left':'center'};
+        if(band)cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:C.band}};
+      });
+      row.getCell(3).numFmt='0';
+      if(typeof r.qty==='number')row.getCell(4).numFmt=Number.isInteger(r.qty)?'#,##0':'#,##0.###';
+      if(r.date)row.getCell(7).numFmt='dd-mmm-yyyy';
+    });
+    ws.autoFilter={from:{row:1,column:1},to:{row:1,column:7}};
+  });
+  // file log
+  const lg=wb.addWorksheet('File Log',{views:[{state:'frozen',ySplit:1}],properties:{tabColor:{argb:'FF5B6C67'}}});
+  lg.columns=[{width:14},{width:40},{width:20},{width:22},{width:18},{width:12},{width:20}];
+  lg.addRow(LOG_HEAD);styleHead(lg,7);
+  const stamp=new Date();const stampTxt=`${pad(stamp.getDate())}-${MONTHS[stamp.getMonth()].slice(0,3)}-${stamp.getFullYear()} ${pad(stamp.getHours())}:${pad(stamp.getMinutes())}`;
+  const logRows=[...(S.prev?S.prev.log:[])];
+  S.batches.filter(b=>b.done).forEach(b=>b.items.filter(i=>i.confirmed&&!i.skipped).forEach(i=>logRows.push({date:isoOf(S.year,S.month,b.day),file:i.fileName,sheet:i.sheetName,sender:finalSender(i),cat:CATS.find(c=>c.key===i.category).sheet,rows:extract(i).rows.length,added:stampTxt})));
+  logRows.forEach(l=>{
+    const iso=typeof l.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(l.date)?l.date:null;
+    const row=lg.addRow([iso?utcDate(iso):l.date,l.file,l.sheet,l.sender,l.cat,l.rows,l.added]);
+    row.eachCell({includeEmpty:true},(cell,c)=>{cell.border=border;cell.font={name:'Calibri',size:11};cell.alignment={vertical:'middle',horizontal:c===2||c===3||c===4?'left':'center'}});
+    if(iso)row.getCell(1).numFmt='dd-mmm-yyyy';
+  });
+  if(logRows.length)lg.autoFilter={from:{row:1,column:1},to:{row:1,column:7}};
+  const buf=await wb.xlsx.writeBuffer();
+  return {buf,counts:CATS.map(c=>rows[c.key].length)};
+}
+async function generate(){
+  if(!libsReady()){S.genMsg={kind:'bad',html:'The Excel library has not loaded. Check your connection and reload the page.'};render();return}
+  S.busy=true;S.genMsg=null;render();
+  let name=(S.fileName||`Archive_of_${MONTHS[S.month]}_${S.year}`).trim().replace(/[\\/:*?"<>|]+/g,'_');
+  if(!/\.xlsx$/i.test(name))name+='.xlsx';
+  try{
+    const {buf,counts}=await buildWorkbook();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const sumTxt=CATS.map((c,i)=>`${c.sheet}: ${counts[i].toLocaleString()}`).join(' · ');
+    let dl=null;try{dl=await window.claude?.use?.('downloads')}catch(e){dl=null}
+    if(dl){
+      try{await dl.save({filename:name,data:blob});S.genMsg={kind:'good',html:`<b>${esc(name)}</b> saved. ${sumTxt}. Next time, upload this file as the previous archive to keep adding to it.`}}
+      catch(err){S.genMsg={kind:err&&err.code==='declined'?'warn':'bad',html:err&&err.code==='declined'?'Download cancelled. Press Generate again when ready; nothing has been lost.':`The file could not be saved (${esc(err&&err.message||err&&err.code||'unknown error')}). Press Generate to try again.`}}
+    }else{
+      const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);
+      S.genMsg={kind:'good',html:`<b>${esc(name)}</b> generated. ${sumTxt}.`};
+    }
+  }catch(err){S.genMsg={kind:'bad',html:'Building the archive failed: '+esc(err.message||err)}}
+  S.busy=false;render();
+}
+
+render();
+</script>
+
+</body>
+</html>
