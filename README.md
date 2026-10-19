@@ -11,7 +11,7 @@ A browser app that builds a monthly Excel archive of pharmacy files in three she
 
 Material codes are found anywhere in the sheet: any 6-digit number starting with 1–5, regardless of the column header.
 
-Output columns: `S.no · Pharmacy · Material Code · Qty · Wh · Who send the file · Date`, plus a **File Log** sheet listing every file added.
+Output columns: `S.no · Pharmacy · Material Code · Qty · Wh · Who send the file · Date · File Name`, plus a **File Log** sheet listing every file added.
 
 ## Privacy
 Everything runs in your browser. Files are never uploaded to any server.
